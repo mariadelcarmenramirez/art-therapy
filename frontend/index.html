@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Art Therapy Chat</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        #chat-container {
+            width: 100%;
+            max-width: 600px;
+            height: 90vh;
+            max-height: 800px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #chat-window {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            max-width: 80%;
+            padding: 12px 18px;
+            border-radius: 20px;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+        .user {
+            background-color: #007aff;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+        .assistant {
+            background-color: #e5e5ea;
+            color: #333;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        .info {
+            background-color: #f0f0f0;
+            color: #555;
+            align-self: center;
+            font-style: italic;
+            font-size: 0.9em;
+            text-align: center;
+        }
+        #input-area {
+            border-top: 1px solid #e0e0e0;
+            padding: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        #message-input {
+            flex-grow: 1;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            padding: 12px 18px;
+            font-size: 16px;
+        }
+        #send-button, #upload-button-label {
+            background-color: #007aff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #upload-button-label { background-color: #34c759; }
+        #message-input:disabled { background-color: #f9f9f9; }
+        #upload-input { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="chat-container">
+        <div id="chat-window">
+            <div class="message assistant">
+                Hello! Please upload an image of your artwork to begin.
+            </div>
+        </div>
+        <div id="input-area">
+            <input type="file" id="upload-input" accept="image/*" onchange="handleImageUpload(event)">
+            
+            <label for="upload-input" id="upload-button-label" title="Upload Image">🖼️</label>
+            
+            <input type="text" id="message-input" placeholder="Type your message..." disabled>
+            <button id="send-button" onclick="handleSendMessage()" disabled>➤</button>
+        </div>
+    </div>
+
+    <script>
+        const chatWindow = document.getElementById('chat-window');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const uploadLabel = document.getElementById('upload-button-label');
+
+        // This is the URL of your backend.
+        const API_URL = 'http://localhost:8000';
+
+        // Add event listener for "Enter" key
+        messageInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                handleSendMessage();
+            }
+        });
+
+        // 1. Handle the image upload
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            addMessageToChat('info', `Uploading ${file.name}...`);
+            toggleLoading(true);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(`${API_URL}/start_conversation`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                addMessageToChat('assistant', data.first_message);
+                
+                // Enable the text chat
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                uploadLabel.style.display = 'none'; // Hide upload button
+
+            } catch (error) {
+                console.error('Upload Error:', error);
+                addMessageToChat('info', `Error: Could not start conversation. ${error.message}`);
+            } finally {
+                toggleLoading(false);
+            }
+        }
+
+        // 2. Handle sending a text message
+        async function handleSendMessage() {
+            const userMessage = messageInput.value.trim();
+            if (userMessage === '') return;
+
+            addMessageToChat('user', userMessage);
+            messageInput.value = '';
+            toggleLoading(true);
+
+            // Get the entire conversation history from the DOM
+            const history = getConversationHistory();
+
+            try {
+                const response = await fetch(`${API_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: history }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.statusText}`);
+                }
+
+                const data = await response.json(); // data is a ChatMessage
+                addMessageToChat('assistant', data.content);
+
+            } catch (error) {
+                console.error('Chat Error:', error);
+                addMessageToChat('info', `Error: Could not get response. ${error.message}`);
+            } finally {
+                toggleLoading(false);
+            }
+        }
+
+        // --- Helper Functions ---
+
+        function addMessageToChat(role, content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', role);
+            messageDiv.textContent = content;
+            chatWindow.appendChild(messageDiv);
+            
+            // Auto-scroll to the bottom
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+        
+        function getConversationHistory() {
+            const messages = [];
+            chatWindow.querySelectorAll('.message').forEach(msg => {
+                if (msg.classList.contains('user')) {
+                    messages.push({ role: 'user', content: msg.textContent });
+                } else if (msg.classList.contains('assistant')) {
+                    messages.push({ role: 'assistant', content: msg.textContent });
+                }
+            });
+            return messages;
+        }
+
+        function toggleLoading(isLoading) {
+            if (isLoading) {
+                messageInput.disabled = true;
+                sendButton.disabled = true;
+                messageInput.placeholder = 'Assistant is typing...';
+            } else {
+                messageInput.disabled = false;
+                sendButton.disabled = false;
+                messageInput.placeholder = 'Type your message...';
+                messageInput.focus();
+            }
+        }
+    </script>
+</body>
+</html>
