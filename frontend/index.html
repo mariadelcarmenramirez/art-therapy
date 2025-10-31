@@ -89,6 +89,35 @@
         #upload-button-label { background-color: #34c759; }
         #message-input:disabled { background-color: #f9f9f9; }
         #upload-input { display: none; }
+
+        /* --- ADDED FOR SUMMARY BUTTON --- */
+        #summary-area {
+            padding: 15px 20px;
+            border-top: 1px solid #e0e0e0;
+            background-color: #fcfcfc;
+            text-align: center;
+            display: none; /* Hidden by default */
+        }
+        #finish-session-btn {
+            background-color: #d9534f; /* Red for "end" */
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+        #finish-session-btn:disabled {
+            background-color: #aaa;
+            cursor: not-allowed;
+        }
+        #finish-session-btn:hover:not(:disabled) {
+            background-color: #c9302c;
+        }
+        /* --- END ADDED --- */
+
     </style>
 </head>
 <body>
@@ -107,7 +136,13 @@
             <input type="text" id="message-input" placeholder="Type your message..." disabled>
             <button id="send-button" onclick="handleSendMessage()" disabled>➤</button>
         </div>
-    </div>
+
+        <div id="summary-area">
+            <button id="finish-session-btn" onclick="handleFinishSession()">
+                Finish Session & Save Summary
+            </button>
+        </div>
+        </div>
 
     <script>
         const chatWindow = document.getElementById('chat-window');
@@ -115,12 +150,18 @@
         const sendButton = document.getElementById('send-button');
         const uploadLabel = document.getElementById('upload-button-label');
 
+        // --- ADDED ---
+        const summaryArea = document.getElementById('summary-area');
+        const finishButton = document.getElementById('finish-session-btn');
+        // --- END ADDED ---
+
         // This is the URL of your backend.
         const API_URL = 'http://localhost:8000';
 
         // Add event listener for "Enter" key
         messageInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault(); // Prevent new line
                 handleSendMessage();
             }
         });
@@ -153,6 +194,10 @@
                 messageInput.disabled = false;
                 sendButton.disabled = false;
                 uploadLabel.style.display = 'none'; // Hide upload button
+
+                // --- ADDED ---
+                summaryArea.style.display = 'block'; // Show the finish button area
+                // --- END ADDED ---
 
             } catch (error) {
                 console.error('Upload Error:', error);
@@ -196,12 +241,56 @@
             }
         }
 
+        // --- ADDED ---
+        // 3. Handle finishing the session
+        async function handleFinishSession() {
+            addMessageToChat('info', 'Generating summary, please wait...');
+            toggleLoading(true, 'Generating summary...');
+            
+            const history = getConversationHistory();
+
+            try {
+                const response = await fetch(`${API_URL}/summarize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: history }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.statusText}`);
+                }
+
+                const data = await response.json(); // data is a ChatMessage
+                
+                // Add the summary to the chat
+                // We add it as an 'assistant' message so it's formatted nicely
+                addMessageToChat('assistant', data.content);
+                addMessageToChat('info', 'Session complete. Your summary has been saved by the server.');
+
+                // Permanently close the chat
+                document.getElementById('input-area').style.display = 'none';
+                summaryArea.style.display = 'none'; // Hide the button area
+
+            } catch (error)
+            {
+                console.error('Summary Error:', error);
+                addMessageToChat('info', `Error: Could not get summary. ${error.message}`);
+                // Re-enable controls if it failed
+                toggleLoading(false); 
+            }
+        }
+        // --- END ADDED ---
+
+
         // --- Helper Functions ---
 
         function addMessageToChat(role, content) {
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message', role);
-            messageDiv.textContent = content;
+            
+            // Basic Markdown rendering for newlines
+            messageDiv.innerHTML = content.replace(/\n/g, '<br>');
+
             chatWindow.appendChild(messageDiv);
             
             // Auto-scroll to the bottom
@@ -211,27 +300,38 @@
         function getConversationHistory() {
             const messages = [];
             chatWindow.querySelectorAll('.message').forEach(msg => {
+                // We need to get the raw text, not the innerHTML
+                const content = msg.textContent; 
+
                 if (msg.classList.contains('user')) {
-                    messages.push({ role: 'user', content: msg.textContent });
+                    messages.push({ role: 'user', content: content });
                 } else if (msg.classList.contains('assistant')) {
-                    messages.push({ role: 'assistant', content: msg.textContent });
+                    messages.push({ role: 'assistant', content: content });
                 }
             });
             return messages;
         }
 
-        function toggleLoading(isLoading) {
+        // --- MODIFIED ---
+        function toggleLoading(isLoading, message = 'Assistant is typing...') {
             if (isLoading) {
                 messageInput.disabled = true;
                 sendButton.disabled = true;
-                messageInput.placeholder = 'Assistant is typing...';
+                finishButton.disabled = true; // Also disable finish button
+                messageInput.placeholder = message;
             } else {
-                messageInput.disabled = false;
-                sendButton.disabled = false;
-                messageInput.placeholder = 'Type your message...';
-                messageInput.focus();
+                // Only re-enable if the session isn't finished
+                if (document.getElementById('input-area').style.display !== 'none') {
+                    messageInput.disabled = false;
+                    sendButton.disabled = false;
+                    finishButton.disabled = false;
+                    messageInput.placeholder = 'Type your message...';
+                    messageInput.focus();
+                }
             }
         }
+        // --- END MODIFIED ---
+
     </script>
 </body>
 </html>
