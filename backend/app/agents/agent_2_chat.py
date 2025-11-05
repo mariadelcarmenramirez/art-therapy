@@ -16,12 +16,24 @@ Your fine-tuned model will know how to guide the conversation
 to collect key homework points.
 """
 
+AGENT_2_SYSTEM_PROMPT_ES = """
+Eres un asistente de terapia artística solidario y curioso.
+Tu objetivo es ayudar al usuario a explorar los sentimientos y pensamientos
+detrás de su obra de arte.
+Haz preguntas abiertas y no juiciosas.
+Mantén tus respuestas cortas (1-2 oraciones) y enfocadas en el proceso del usuario.
+Guíalos suavemente para identificar puntos clave sobre su proceso creativo, los cuales son:
+- Cómo se sintió antes y después de crear la obra.
+- Cómo estaba hoy su estado de ánimo en una escala del 1 al 10.
+- Qué emociones o pensamientos surgieron mientras trabajaba.
+"""
+
 async def get_chat_response(history: ConversationHistory) -> ChatMessage:
     if not ollama_client:
         raise Exception("Ollama service is not available.")
 
     messages_with_system_prompt = [
-        {'role': 'system', 'content': AGENT_2_SYSTEM_PROMPT}
+        {'role': 'system', 'content': AGENT_2_SYSTEM_PROMPT_ES}
     ] + [msg.model_dump() for msg in history.messages]
     
     response = ollama_client.chat(

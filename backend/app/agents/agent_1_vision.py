@@ -18,6 +18,15 @@ Example output:
 }
 """
 
+VISION_PROMPT_ES = """
+Eres un motor de análisis de arte neutral.
+Analiza la imagen y devuelve SOLO un objeto JSON.
+El objeto JSON debe contener:
+1. "mood_keywords": Una lista de 3-5 palabras clave que describan el estado de ánimo (por ejemplo, "oscuro", "alegre", "caótico", "tranquilo").
+2. "color_keywords": Una lista de 3-5 colores dominantes (por ejemplo, "azules profundos", "amarillos cálidos", "grises apagados").
+3. "content_keywords": Una lista de 3-5 sujetos principales (por ejemplo, "formas abstractas", "una figura solitaria", "una ciudad").
+"""
+
 # Prompt for the "brain" (Phi-3)
 TEXT_PROMPT_TEMPLATE = """
 You are a gentle and empathetic art therapy assistant.
@@ -38,6 +47,25 @@ question to start a conversation.
 Keep it to one single, welcoming sentence.
 """
 
+TEXT_PROMPT_TEMPLATE_ES = """
+Eres un asistente de terapia artística amable y empático.
+Un usuario ha subido una obra de arte con estas características: {analysis}
+
+Basado *solo* en estas características, genera una única pregunta abierta
+para iniciar una conversación.
+
+- Si las palabras clave de estado de ánimo incluyen "oscuro", "triste", "caótico", "enojado", "vacío" o "pesado",
+  comienza con un chequeo muy suave y preocupado, como:
+  "Gracias por compartir. Esta pieza se siente muy poderosa. ¿Cómo te sientes hoy?"
+
+- Para todos los demás estados de ánimo (por ejemplo, "alegre", "colorido", "tranquilo", "vibrante"),
+  comienza con una pregunta curiosa y abierta sobre su proceso, como:
+  "Esta es una pieza muy expresiva. ¿Qué tenías en mente mientras la creabas?"
+  o "Estos colores son llamativos. ¿Qué sentimientos surgieron en ti mientras trabajabas?"
+
+Mantenlo en una sola frase de bienvenida. No escribas más de 20 TOKENS.
+"""
+
 async def get_conversation_starter(image_bytes: bytes) -> str:
     if not ollama_client:
         raise Exception("Ollama service is not available.")
@@ -49,11 +77,11 @@ async def get_conversation_starter(image_bytes: bytes) -> str:
             messages=[
                 {
                     'role': 'system',
-                    'content': VISION_PROMPT
+                    'content': VISION_PROMPT_ES
                 },
                 {
                     'role': 'user',
-                    'content': "Analyze this image and return JSON.",
+                    'content': "Analiza esta imagen y devuelve JSON.",
                     'images': [image_bytes]
                 }
             ]
@@ -75,7 +103,7 @@ async def get_conversation_starter(image_bytes: bytes) -> str:
     # --- STEP 2: Text model generates the safe response ---
     try:
         # Create the prompt for the text model
-        final_prompt = TEXT_PROMPT_TEMPLATE.format(analysis=str(analysis_data))
+        final_prompt = TEXT_PROMPT_TEMPLATE_ES.format(analysis=str(analysis_data))
         
         text_response = ollama_client.chat(
             model=AGENT_1_TEXT_MODEL,
